@@ -38,7 +38,7 @@ monitoring:
       retry_count: 3
 
   performance:
-    fps: 9  # frames per second
+    fps: 5  # frames per second
     
   pose_confirmation:
     emergency: 1    # seconds for emergency poses (lying)

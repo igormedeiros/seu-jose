@@ -158,7 +158,7 @@ class PoseService:
         return True, landmarks_copy
 
     def estimate_elderly_from_pose(self, landmarks):
-        """Estimate if person is elderly based on pose"""
+        """Simple elderly detection based on posture bend"""
         if not landmarks:
             return False
             
@@ -166,6 +166,7 @@ class PoseService:
         hips = landmarks.landmark[self.mp_pose.PoseLandmark.LEFT_HIP].y
         
         posture_bend = abs(shoulders - hips)
+        logging.debug(f"Posture bend: {posture_bend:.3f}")
         return posture_bend > 0.15
 
     def calculate_angle(self, point1, point2, point3):
@@ -179,7 +180,7 @@ class PoseService:
         return np.degrees(angle)
 
     def classify_pose(self, landmarks):
-        """Classify pose with improved accuracy"""
+        """Improved pose classification with depth perception"""
         if not landmarks:
             return PoseType.UNKNOWN.value
             
@@ -189,43 +190,84 @@ class PoseService:
         right_shoulder = landmarks.landmark[self.mp_pose.PoseLandmark.RIGHT_SHOULDER]
         left_hip = landmarks.landmark[self.mp_pose.PoseLandmark.LEFT_HIP]
         right_hip = landmarks.landmark[self.mp_pose.PoseLandmark.RIGHT_HIP]
-        left_knee = landmarks.landmark[self.mp_pose.PoseLandmark.LEFT_KNEE]
-        right_knee = landmarks.landmark[self.mp_pose.PoseLandmark.RIGHT_KNEE]
+        left_ankle = landmarks.landmark[self.mp_pose.PoseLandmark.LEFT_ANKLE]
+        right_ankle = landmarks.landmark[self.mp_pose.PoseLandmark.RIGHT_ANKLE]
         
-        # Calculate average heights
-        shoulder_height = (left_shoulder.y + right_shoulder.y) / 2
+        # Calculate depths (z-coordinates)
+        head_depth = nose.z
+        feet_depth = (left_ankle.z + right_ankle.z) / 2
+        
+        # Calculate vertical positions
+        head_height = nose.y
+        feet_height = (left_ankle.y + right_ankle.y) / 2
         hip_height = (left_hip.y + right_hip.y) / 2
-        knee_height = (left_knee.y + right_knee.y) / 2
+        shoulder_height = (left_shoulder.y + right_shoulder.y) / 2
         
-        # Calculate angles
-        torso_angle = abs(shoulder_height - hip_height)
-        leg_angle = abs(hip_height - knee_height)
+        # Check for significant depth difference (person lying towards/away from camera)
+        depth_difference = abs(head_depth - feet_depth)
         
-        # Improved classification logic
-        if nose.y > hip_height and torso_angle < 0.15:  # Head below hips and flat torso
+        # Check height differences
+        vertical_alignment = abs(head_height - feet_height)
+        torso_vertical = abs(shoulder_height - hip_height)
+        
+        # Lying indicators:
+        # 1. Large depth difference between head and feet
+        # 2. Small vertical difference (accounting for perspective)
+        # 3. Body parts roughly at same height
+        is_lying = (
+            depth_difference > 0.3 or  # Significant depth difference
+            (vertical_alignment < 0.3 and torso_vertical < 0.15)  # Almost horizontal alignment
+        )
+        
+        if is_lying:
             return PoseType.LYING.value
-        elif torso_angle < 0.3 and leg_angle < 0.3:  # Bent posture
+        elif torso_vertical < 0.3:  # Bent posture
             return PoseType.SITTING.value
         else:
             return PoseType.STANDING.value
 
+    def estimate_gender(self, landmarks):
+        """Enhanced gender detection"""
+        if not landmarks:
+            return False
+            
+        left_shoulder = landmarks.landmark[self.mp_pose.PoseLandmark.LEFT_SHOULDER]
+        right_shoulder = landmarks.landmark[self.mp_pose.PoseLandmark.RIGHT_SHOULDER]
+        left_hip = landmarks.landmark[self.mp_pose.PoseLandmark.LEFT_HIP]
+        right_hip = landmarks.landmark[self.mp_pose.PoseLandmark.RIGHT_HIP]
+        
+        shoulder_width = abs(right_shoulder.x - left_shoulder.x)
+        hip_width = abs(right_hip.x - left_hip.x)
+        shoulder_hip_ratio = shoulder_width / (hip_width + 1e-6)
+        
+        # Adjusted thresholds for male detection
+        is_male = (
+            shoulder_hip_ratio > 1.1 and  # Reduced threshold
+            shoulder_width > 0.25  # Reduced threshold
+        )
+        
+        logging.debug(f"Gender detection metrics: ratio={shoulder_hip_ratio:.2f}, width={shoulder_width:.2f}")
+        return is_male
+
     def analyze_pose(self, frame):
         """Analyze pose in frame"""
-        # First detect person with YOLO
+        # 1. Person Detection
         person_results = self.person_model(frame)[0]
         persons = [det for det in person_results.boxes.data if det[5] == 0]
         
         if not persons:
             return None, None, None, None
         
-        # Get largest person detection
+        # Get largest person
         person = persons[np.argmax([det[4] for det in persons])]
         x1, y1, x2, y2 = map(int, person[:4])
         
-        # Crop frame to person area
+        # Crop to person area
         person_frame = frame[y1:y2, x1:x2]
+        if person_frame.size == 0:
+            return None, None, None, None
         
-        # Process pose only on cropped region
+        # Process pose on cropped region
         image_rgb = cv2.cvtColor(person_frame, cv2.COLOR_BGR2RGB)
         results = self.pose_detector.process(image_rgb)
         
