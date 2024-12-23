@@ -1,0 +1,62 @@
+# Python specific ignores
+__pycache__/
+.env
+*.weights
+*.cfg
+*.names
+*.pt
+*.py[cod]
+
+# IDE specific ignores
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.log
+
+# Virtual environment
+venv/
+ENV/
+env/
+.venv/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Byte-compiled / optimized / DLL files
+*.pyc
+*.pyo
+*.pyd
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+*.egg
+*.egg-info
+dist/
+build/
+*.whl
+
+# MP4 files
+*.mp4
+
+# YOLO models
+*.weights
+*.cfg
+*.names
+
+# Other
+.DS_Store
+*.bak
+*.swp
+*.tmp

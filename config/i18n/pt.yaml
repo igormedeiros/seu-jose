@@ -1,0 +1,6 @@
+messages:
+  alerts:
+    emergency: "⚠️ EMERGÊNCIA: Idoso caído detectado!"
+    high: "⚠️ ALTO RISCO: Idoso em pé sem assistência"
+    moderate: "⚠️ RISCO MODERADO: Idoso sentado por período prolongado"
+    acknowledge: "Responda com /ok para confirmar"

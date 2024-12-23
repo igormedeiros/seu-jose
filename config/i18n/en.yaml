@@ -1,0 +1,12 @@
+messages:
+  alerts:
+    emergency: "⚠️ EMERGENCY: Elderly person has fallen!"
+    high: "⚠️ HIGH RISK: Elderly person standing unassisted"
+    moderate: "⚠️ MODERATE RISK: Elderly person sitting for extended period"
+    acknowledge: "Reply with /ok to acknowledge"
+  
+  detection:
+    person_found: "Person detected!"
+    elderly_found: "Elderly {gender} detected!"
+    position: "Current position: {position}"
+    risk_level: "Risk level: {level}"

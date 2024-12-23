@@ -1,0 +1,45 @@
+monitoring:
+  target:
+    gender: "male"
+    min_age: 65
+    max_age: 100
+  
+  risk_levels:
+    emergency:
+      level: 3
+      color: "red"
+      check_interval: 1
+    high:
+      level: 2
+      color: "yellow"
+      check_interval: 3
+    moderate:
+      level: 1
+      color: "blue"
+      check_interval: 3
+    low:
+      level: 0
+      color: "green"
+      check_interval: 5
+
+  pose_risks:
+    lying:
+      risk: "emergency"
+    standing:
+      risk: "high"
+    sitting:
+      risk: "moderate"
+    unknown:
+      risk: "low"
+
+  notifications:
+    telegram:
+      alert_interval: 300  # 5 minutes
+      retry_count: 3
+
+  performance:
+    fps: 9  # frames per second
+    
+  pose_confirmation:
+    emergency: 1    # seconds for emergency poses (lying)
+    standard: 3     # seconds for other poses
