@@ -25,7 +25,7 @@ def main():
 
     rtsp_url = f'rtsp://{RTSP_USERNAME}:{RTSP_ACCESS_KEY}@{RTSP_CAMERA_IP}:{RTSP_CAMERA_PORT}/cam/realmonitor?channel=1&subtype=0'
         
-    rtsp_url = '1.mp4'
+    # rtsp_url = '1.mp4'
     
     controller.run(rtsp_url)
 

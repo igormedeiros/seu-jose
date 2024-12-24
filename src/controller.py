@@ -1,5 +1,5 @@
 import cv2
-import time  # Adicionando o módulo time
+import time 
 from rich.panel import Panel
 from rich.table import Table
 from service import TelegramService, PoseService
@@ -18,6 +18,17 @@ class MonitoringController:
         self.pose_frame_count = 0
         self.last_alert_time = 0
         self.fps = self.config.config["monitoring"]["performance"]["fps"]
+        
+        # Performance monitoring
+        self.processing_times = []
+        self.max_times_buffer = 30  # Keep last 30 frames for moving average
+        self.frame_count = 0
+    
+    def calculate_moving_average(self):
+        """Calculate moving average of processing times"""
+        if not self.processing_times:
+            return 0
+        return sum(self.processing_times) / len(self.processing_times)
     
     def check_pose_duration(self, pose):
         """Check if pose has been maintained for required frames"""
@@ -47,7 +58,7 @@ class MonitoringController:
         # Check if enough frames have passed
         return self.pose_frame_count >= required_frames
     
-    def process_frame(self, frame):
+    def process_frame_internal(self, frame):
         landmarks, is_elderly, pose, bbox = self.pose_service.analyze_pose(frame)
         
         if is_elderly:
@@ -104,6 +115,45 @@ class MonitoringController:
             return frame, True, True, GenderType.MALE.value, pose
             
         return frame, True, False, GenderType.UNKNOWN.value, PoseType.UNKNOWN.value
+    
+    def process_frame(self, frame):
+        start_time = time.time()
+        
+        # Original frame processing
+        frame, is_person, is_elderly, gender, position = self.process_frame_internal(frame)
+        
+        # Calculate current frame processing time
+        current_time = (time.time() - start_time) * 1000  # to milliseconds
+        
+        # Update moving average
+        self.processing_times.append(current_time)
+        if len(self.processing_times) > self.max_times_buffer:
+            self.processing_times.pop(0)
+        
+        avg_time = self.calculate_moving_average()
+        
+        # Add two-line time overlay
+        cv2.putText(
+            frame,
+            f"Frame: {current_time:.1f}ms ({1000/current_time:.1f} FPS)",
+            (10, 130),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (0, 255, 0),
+            2
+        )
+        
+        cv2.putText(
+            frame,
+            f"Avg: {avg_time:.1f}ms ({1000/avg_time:.1f} FPS)",
+            (10, 160),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (0, 255, 0),
+            2
+        )
+        
+        return frame, is_person, is_elderly, gender, position
     
     def create_status_table(self, is_person, is_elderly, gender, position="unknown"):
         table = Table(title="Detection Status", show_header=True)

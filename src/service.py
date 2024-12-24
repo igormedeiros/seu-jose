@@ -180,51 +180,51 @@ class PoseService:
         return np.degrees(angle)
 
     def classify_pose(self, landmarks):
-        """Improved pose classification with depth perception"""
+        """Classify pose using body proportions relative to head size"""
         if not landmarks:
             return PoseType.UNKNOWN.value
             
-        # Get key landmarks
+        # Get head landmarks
         nose = landmarks.landmark[self.mp_pose.PoseLandmark.NOSE]
+        left_ear = landmarks.landmark[self.mp_pose.PoseLandmark.LEFT_EAR]
+        right_ear = landmarks.landmark[self.mp_pose.PoseLandmark.RIGHT_EAR]
+        
+        # Body landmarks
         left_shoulder = landmarks.landmark[self.mp_pose.PoseLandmark.LEFT_SHOULDER]
         right_shoulder = landmarks.landmark[self.mp_pose.PoseLandmark.RIGHT_SHOULDER]
         left_hip = landmarks.landmark[self.mp_pose.PoseLandmark.LEFT_HIP]
         right_hip = landmarks.landmark[self.mp_pose.PoseLandmark.RIGHT_HIP]
         left_ankle = landmarks.landmark[self.mp_pose.PoseLandmark.LEFT_ANKLE]
         right_ankle = landmarks.landmark[self.mp_pose.PoseLandmark.RIGHT_ANKLE]
+
+        # Calculate head size (average of width and height)
+        head_width = abs(left_ear.x - right_ear.x)
+        head_height = abs((left_ear.y + right_ear.y)/2 - nose.y)
+        head_size = (head_width + head_height) / 2
+
+        # Calculate body segments in terms of head sizes
+        shoulder_to_hip = abs((left_shoulder.y + right_shoulder.y)/2 - 
+                             (left_hip.y + right_hip.y)/2) / head_size
         
-        # Calculate depths (z-coordinates)
-        head_depth = nose.z
-        feet_depth = (left_ankle.z + right_ankle.z) / 2
+        hip_to_ankle = abs((left_hip.y + right_hip.y)/2 - 
+                          (left_ankle.y + right_ankle.y)/2) / head_size
         
-        # Calculate vertical positions
-        head_height = nose.y
-        feet_height = (left_ankle.y + right_ankle.y) / 2
-        hip_height = (left_hip.y + right_hip.y) / 2
-        shoulder_height = (left_shoulder.y + right_shoulder.y) / 2
+        total_height_heads = (shoulder_to_hip + hip_to_ankle)
         
-        # Check for significant depth difference (person lying towards/away from camera)
-        depth_difference = abs(head_depth - feet_depth)
-        
-        # Check height differences
-        vertical_alignment = abs(head_height - feet_height)
-        torso_vertical = abs(shoulder_height - hip_height)
-        
-        # Lying indicators:
-        # 1. Large depth difference between head and feet
-        # 2. Small vertical difference (accounting for perspective)
-        # 3. Body parts roughly at same height
-        is_lying = (
-            depth_difference > 0.3 or  # Significant depth difference
-            (vertical_alignment < 0.3 and torso_vertical < 0.15)  # Almost horizontal alignment
-        )
-        
-        if is_lying:
-            return PoseType.LYING.value
-        elif torso_vertical < 0.3:  # Bent posture
-            return PoseType.SITTING.value
-        else:
+        logging.debug(f"""
+            Pose measurements:
+            - Head size: {head_size:.3f}
+            - Shoulders to hips (in heads): {shoulder_to_hip:.1f}
+            - Hips to ankles (in heads): {hip_to_ankle:.1f}
+            - Total height (in heads): {total_height_heads:.1f}
+        """)
+
+        # Standing adult is ~7-8 head heights tall
+        # Sitting adult is ~4-5 head heights tall
+        if total_height_heads > 5.5:  # Threshold for standing
             return PoseType.STANDING.value
+        else:
+            return PoseType.SITTING.value
 
     def estimate_gender(self, landmarks):
         """Enhanced gender detection"""
