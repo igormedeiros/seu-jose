@@ -1,11 +1,12 @@
 import cv2
-import time 
+import time
 from rich.panel import Panel
 from rich.table import Table
 from service import TelegramService, PoseService
 from logger import logging, console
 from enums import PoseType, GenderType
 from config import Config
+import numpy as np
 
 class MonitoringController:
     def __init__(self, config: Config):
@@ -19,11 +20,14 @@ class MonitoringController:
         self.last_alert_time = 0
         self.fps = self.config.config["monitoring"]["performance"]["fps"]
         
+        # Frame comparison
+        self.previous_frame = None
+        self.frame_threshold = 0.1
+        
         # Performance monitoring
-        self.processing_times = []
-        self.max_times_buffer = 30  # Keep last 30 frames for moving average
-        self.frame_count = 0
-    
+        self.processing_times = []  # Initialize empty list for processing times
+        self.max_times_buffer = 30  # Keep last 30 measurements
+        
     def calculate_moving_average(self):
         """Calculate moving average of processing times"""
         if not self.processing_times:
@@ -89,7 +93,7 @@ class MonitoringController:
             
             cv2.putText(
                 frame,
-                f"Elderly Male - {pose} ({self.pose_frame_count}/{required_frames} frames)",
+                f"Idoso - {pose} ({self.pose_frame_count}/{required_frames} frames)",
                 (x1, y1 - 10),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.9,
@@ -172,57 +176,62 @@ class MonitoringController:
         
         return table
     
-    def run(self, video_source='1.mp4'):
-        """Run the monitoring system"""
-        console.print("[bold green]Starting Elderly Monitoring System...[/]")
-        logging.info("System started")
+    def has_significant_change(self, frame):
+        """Quick check for frame differences"""
+        if self.previous_frame is None:
+            self.previous_frame = frame.copy()
+            return True
+            
+        # Calculate simple difference
+        diff = cv2.absdiff(
+            cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY),
+            cv2.cvtColor(self.previous_frame, cv2.COLOR_BGR2GRAY)
+        )
         
-        self.telegram_service.start()
+        # Quick mean calculation
+        mean_diff = np.mean(diff)
+        
+        # Update previous frame only if different
+        if mean_diff > self.frame_threshold:
+            self.previous_frame = frame.copy()
+            return True
+            
+        return False
+
+    def run(self, video_source):
+        cap = cv2.VideoCapture(video_source)
         
         try:
-            cap = cv2.VideoCapture(video_source)
+            target_fps = self.config.config["monitoring"]["performance"]["fps"]
+            process_delay = 1.0 / target_fps
+            next_process_time = time.time()
             
-            # Get FPS from config
-            frame_rate = self.config.config["monitoring"]["performance"]["fps"]
-            prev_time = 0
-
-            with console.status("[bold blue]Processing video feed...") as status:
-                while True:
-                    ret, frame = cap.read()
-                    if not ret:
-                        break
-                    
-                    current_time = time.time()
-                    elapsed_time = current_time - prev_time
-
-                    # Process frame at configured FPS
-                    if elapsed_time > 1.0 / frame_rate:
-                        prev_time = current_time
-                        frame, is_person, is_elderly, gender, position = self.process_frame(frame)
-                        
-                        if is_person:
-                            console.print("[green]Person detected! 👤[/]")
-                            if is_elderly:
-                                console.print(Panel.fit(
-                                    f"[bold yellow]Elderly {gender} detected! 👴[/]",
-                                    border_style="red"
-                                ))
-                    
-                        status_table = self.create_status_table(is_person, is_elderly, gender, position)
-                        console.print(status_table)
-                        console.print("-" * 50)
-                        
-                        cv2.imshow("Elderly Monitoring System", frame)
-                    
-                    if cv2.waitKey(1) & 0xFF == ord('q'):
-                        break
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
                 
+                # Quick resize for comparison
+                resized = cv2.resize(frame, (self.pose_service.display_width, self.pose_service.display_height))
+                
+                # Skip processing if frame hasn't changed
+                if not self.has_significant_change(resized):
+                    cv2.imshow("Elderly Monitoring System", resized)
+                    continue
+                
+                # Process only changed frames
+                if time.time() >= next_process_time:
+                    processed_frame, is_person, is_elderly, gender, position = self.process_frame(resized)
+                    cv2.imshow("Elderly Monitoring System", processed_frame)
+                    next_process_time = time.time() + process_delay
+                
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
+                    
         finally:
             cap.release()
             cv2.destroyAllWindows()
             self.telegram_service.stop()
-            logging.info("System stopped")
-            console.print("[bold red]Monitoring system stopped.[/]")
 
     def draw_skeleton(self, frame, landmarks):
         """

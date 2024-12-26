@@ -3,3 +3,10 @@ tensorflow
 mediapipe
 python-telegram-bot
 numpy
+dlib
+cmake
+face_recognition
+pygame
+psutil
+gputil
+python-dotenv

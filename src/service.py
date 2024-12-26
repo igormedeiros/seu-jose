@@ -105,7 +105,13 @@ class PoseService:
             min_detection_confidence=0.5,
             min_tracking_confidence=0.5
         )
-    
+        # Display settings
+        self.display_width = 640
+        self.display_height = 480
+        # Person tracking
+        self.person_detected = False
+        self.person_bbox = None
+
     def detect_person(self, frame):
         """Detect person in frame using YOLOv8"""
         person_results = self.person_model(frame)[0]
@@ -250,31 +256,92 @@ class PoseService:
         return is_male
 
     def analyze_pose(self, frame):
-        """Analyze pose in frame"""
-        # 1. Person Detection
-        person_results = self.person_model(frame)[0]
-        persons = [det for det in person_results.boxes.data if det[5] == 0]
+        """Two-phase detection pipeline"""
+        process_frame = frame.copy()
         
-        if not persons:
-            return None, None, None, None
-        
-        # Get largest person
-        person = persons[np.argmax([det[4] for det in persons])]
-        x1, y1, x2, y2 = map(int, person[:4])
-        
-        # Crop to person area
-        person_frame = frame[y1:y2, x1:x2]
-        if person_frame.size == 0:
-            return None, None, None, None
-        
-        # Process pose on cropped region
-        image_rgb = cv2.cvtColor(person_frame, cv2.COLOR_BGR2RGB)
-        results = self.pose_detector.process(image_rgb)
-        
-        if not results.pose_landmarks:
-            return None, None, None, None
+        # Phase 1: Initial YOLO detection (only if person not detected)
+        if not self.person_detected:
+            person_results = self.person_model(process_frame)[0]
+            persons = [det for det in person_results.boxes.data if det[5] == 0]
             
-        is_elderly = self.estimate_elderly_from_pose(results.pose_landmarks)
-        pose = self.classify_pose(results.pose_landmarks)
+            if not persons:
+                return None, None, None, None
+            
+            # Store detected person
+            person = persons[np.argmax([det[4] for det in persons])]
+            self.person_bbox = tuple(map(int, person[:4]))
+            self.person_detected = True
+            
+            # Draw initial bounding box
+            x1, y1, x2, y2 = self.person_bbox
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            return None, None, None, self.person_bbox
         
-        return results.pose_landmarks, is_elderly, pose, (x1, y1, x2, y2)
+        # Phase 2: MediaPipe pose tracking
+        if self.person_bbox:
+            x1, y1, x2, y2 = self.person_bbox
+            person_frame = process_frame[y1:y2, x1:x2]
+            
+            if person_frame.size == 0:
+                return None, None, None, None
+                
+            image_rgb = cv2.cvtColor(person_frame, cv2.COLOR_BGR2RGB)
+            results = self.pose_detector.process(image_rgb)
+            
+            if not results.pose_landmarks:
+                return None, None, None, None
+                
+            is_elderly = self.estimate_elderly_from_pose(results.pose_landmarks)
+            pose = self.classify_pose(results.pose_landmarks)
+            
+            return results.pose_landmarks, is_elderly, pose, self.person_bbox
+        
+        return None, None, None, None
+
+class MonitoringController:
+    def process_frame(self, frame):
+        start_time = time.time()
+        
+        # Get detection results
+        landmarks, is_elderly, pose, bbox = self.pose_service.analyze_pose(frame)
+        
+        # Draw visualization
+        if self.pose_service.person_detected and landmarks is not None:
+            # Draw skeleton only after initial detection
+            success, _ = self.pose_service.draw_skeleton(frame, landmarks, bbox)
+        
+        # Resize for display
+        display_frame = cv2.resize(
+            frame, 
+            (self.pose_service.display_width, self.pose_service.display_height)
+        )
+        
+        # Add performance metrics
+        current_time = (time.time() - start_time) * 1000
+        self.processing_times.append(current_time)
+        if len(self.processing_times) > self.max_times_buffer:
+            self.processing_times.pop(0)
+        
+        avg_time = self.calculate_moving_average()
+        
+        cv2.putText(
+            display_frame,
+            f"Frame: {current_time:.1f}ms ({1000/current_time:.1f} FPS)",
+            (10, 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (0, 255, 0),
+            2
+        )
+        
+        cv2.putText(
+            display_frame,
+            f"Avg: {avg_time:.1f}ms ({1000/avg_time:.1f} FPS)",
+            (10, 60),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (0, 255, 0),
+            2
+        )
+        
+        return display_frame, is_elderly, pose, landmarks

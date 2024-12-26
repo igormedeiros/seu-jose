@@ -7,6 +7,29 @@ __pycache__/
 *.pt
 *.py[cod]
 
+# Image files
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.tiff
+*.ico
+*.svg
+*.webp
+
+# Video files
+*.avi
+*.mov
+*.wmv
+*.flv
+*.mkv
+*.webm
+*.m4v
+*.3gp
+*.vob
+*.swf
+
 # IDE specific ignores
 .vscode/
 .idea/
@@ -21,6 +44,9 @@ __pycache__/
 dist/
 build/
 *.log
+
+# POC files
+poc_*.py
 
 # Virtual environment
 venv/
